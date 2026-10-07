@@ -55,3 +55,17 @@ def test_clean_rejects_unknown_churn_labels():
 
 def test_raw_path_points_at_dataset():
     assert RAW_PATH.exists()
+
+
+def test_clean_handles_whitespace_only_total_charges():
+    raw = load_raw().head(3).copy()
+    raw.loc[0, "TotalCharges"] = "   "
+    df = clean(raw)
+    assert df.loc[0, "TotalCharges"] == 0.0
+
+
+def test_clean_does_not_mutate_input():
+    raw = load_raw()
+    before = raw.copy()
+    clean(raw)
+    pd.testing.assert_frame_equal(raw, before)

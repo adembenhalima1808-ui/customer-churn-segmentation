@@ -3,6 +3,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.svm import LinearSVC
 
 from churn.data import clean, load_raw
 from churn.features import build_features
@@ -17,10 +18,16 @@ from churn.models import (
 
 
 @pytest.fixture(scope="module")
-def data():
+def features_and_target():
     df = clean(load_raw())
     X = build_features(df)
     y = df["Churn"]
+    return X, y
+
+
+@pytest.fixture(scope="module")
+def data(features_and_target):
+    X, y = features_and_target
     return split_data(X, y)
 
 
@@ -101,3 +108,31 @@ def test_tenure_or_contract_is_a_top_driver(data):
     importances = feature_importance(model, X_train.columns)
     top_5 = set(importances.head(5).index)
     assert {"tenure", "contract_level"} & top_5
+
+
+def test_evaluate_without_predict_proba_omits_roc_auc(data):
+    # LinearSVC has no predict_proba, so evaluate() must take the branch that
+    # skips roc_auc instead of raising on the missing attribute.
+    X_train, X_test, y_train, y_test = data
+    model = LinearSVC(max_iter=2000, random_state=0)
+    model.fit(X_train, y_train)
+    metrics = evaluate(model, X_test, y_test)
+    assert "roc_auc" not in metrics
+    assert set(metrics) == {"accuracy", "precision", "recall", "f1"}
+    assert all(0.0 <= value <= 1.0 for value in metrics.values())
+
+
+@pytest.mark.parametrize("test_size", [0.1, 0.3, 0.5])
+def test_split_data_respects_requested_test_size(features_and_target, test_size):
+    X, y = features_and_target
+    X_train, X_test, y_train, y_test = split_data(X, y, test_size=test_size)
+    assert len(X_test) == pytest.approx(len(X) * test_size, abs=1)
+    assert len(X_train) + len(X_test) == len(X)
+
+
+def test_split_data_is_reproducible(features_and_target):
+    X, y = features_and_target
+    first = split_data(X, y)
+    second = split_data(X, y)
+    pd.testing.assert_frame_equal(first[0], second[0])
+    pd.testing.assert_series_equal(first[2], second[2])

@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from churn.data import clean, load_raw
-from churn.features import SEGMENT_FEATURES, build_features, segment_matrix
+from churn.features import SEGMENT_FEATURES, _safe_ratio, build_features, segment_matrix
 
 
 @pytest.fixture(scope="module")
@@ -68,3 +68,18 @@ def test_segment_matrix_is_a_copy(features):
     seg = segment_matrix(features)
     seg.iloc[0, 0] = -999
     assert features.iloc[0, 0] != -999
+
+
+def test_safe_ratio_guards_against_zero_denominator():
+    # build_features never hits this directly (its denominator is tenure + 1,
+    # always >= 1), so the zero-guard needs its own direct test.
+    numerator = pd.Series([10.0, 20.0])
+    denominator = pd.Series([0.0, 5.0])
+    result = _safe_ratio(numerator, denominator)
+    assert result.tolist() == [10.0, 4.0]
+
+
+def test_safe_ratio_normal_division():
+    numerator = pd.Series([9.0])
+    denominator = pd.Series([3.0])
+    assert _safe_ratio(numerator, denominator).tolist() == [3.0]
